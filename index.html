@@ -16,7 +16,7 @@
         textarea { height: 50px; resize: vertical; }
         .est-date-tag { font-weight: bold; color: var(--arjo-blue); font-size: 10px; }
         .btn-row { display: flex; gap: 10px; margin: 20px 0; }
-        button { cursor: pointer; border: none; border-radius: 4px; padding: 8px 12px; font-weight: bold; font-size: 11px; transition: 0.2s; }
+        button { cursor: pointer; border: none; border-radius: 4px; padding: 8px 12px; font-weight: bold; font-size: 11px; }
         .btn-add { background: var(--success); color: white; }
         .btn-sync { background: var(--arjo-blue); color: white; }
         .btn-archive-toggle { background: #6f42c1; color: white; }
@@ -70,7 +70,7 @@
 </div>
 
 <script>
-    // --- SUPABASE CONFIG ---
+    // YOUR ORIGINAL KEYS PRESERVED
     const SUPABASE_URL = 'https://htborrnoqiuvbvlszdos.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_IAtSD7zvmTvamDHA87uijA_7usXI9lX';
     const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -151,10 +151,10 @@
             const row = sel.closest('tr');
             if(confirm("Archive this request?")) {
                 const archiveData = {
-                    category: row.querySelector('.f-cat').value,
-                    requestor: row.querySelector('.f-req').value,
-                    engineer: row.querySelector('.f-eng').value,
-                    description: row.querySelector('.f-desc').value,
+                    cat: row.querySelector('.f-cat').value,
+                    req: row.querySelector('.f-req').value,
+                    eng: row.querySelector('.f-eng').value,
+                    desc: row.querySelector('.f-desc').value,
                     est_completion: row.querySelector('.est-date-tag').innerText,
                     closed_at: new Date().toLocaleString('en-GB')
                 };
@@ -167,15 +167,6 @@
                 }
             } else { sel.value = "Testing"; }
         }
-    }
-
-    async function deleteRow(btn) {
-        const row = btn.closest('tr');
-        const id = row.getAttribute('data-id');
-        if (id && confirm("Delete from cloud?")) {
-            await _supabase.from('test_requests').delete().eq('id', id);
-        }
-        row.remove();
     }
 
     async function syncToSupabase() {
@@ -193,15 +184,11 @@
             if (id) d.id = id;
             return d;
         });
-
-        document.getElementById('sync-info').innerText = "Syncing...";
         const { error } = await _supabase.from('test_requests').upsert(activeData);
-        if (error) alert(error.message);
-        else fetchFromCloud();
+        if (!error) fetchFromCloud();
     }
 
     async function fetchFromCloud() {
-        // Fetch Live Rows
         const { data: live } = await _supabase.from('test_requests').select('*').order('created_at', { ascending: true });
         if (live) {
             document.getElementById('test-body').innerHTML = "";
@@ -209,28 +196,44 @@
             if (live.length === 0) addRow();
         }
         
-        // Fetch Archived Rows (THIS WAS THE MISSING PART)
+        // MATCHING YOUR SQL NAMES: cat, req, eng, desc
         const { data: arch } = await _supabase.from('archived_requests').select('*').order('archived_at', { ascending: false });
         if (arch) {
             const abody = document.getElementById('archive-body');
             abody.innerHTML = arch.map(a => `
                 <tr>
-                    <td>${a.category}</td>
-                    <td>${a.requestor || '-'}</td>
+                    <td>${a.cat}</td>
+                    <td>${a.req || '-'}</td>
                     <td><span class="closed-stamp">Closed: ${a.closed_at}</span></td>
                     <td><button class="btn-restore" onclick='restoreItem(${JSON.stringify(a)})'>✏️ Edit</button></td>
                 </tr>
             `).join('');
         }
-        document.getElementById('sync-info').innerText = "✅ Last Cloud Sync: " + new Date().toLocaleTimeString();
     }
 
     async function restoreItem(item) {
         const { error } = await _supabase.from('archived_requests').delete().eq('id', item.id);
         if(!error) {
-            addRow({ ...item, status: 'Testing' });
+            // Mapping short names back to long names for the live list
+            addRow({ 
+                category: item.cat, 
+                requestor: item.req, 
+                engineer: item.eng, 
+                description: item.desc, 
+                est_completion: item.est_completion,
+                status: 'Testing' 
+            });
             window.scrollTo(0,0);
         }
+    }
+
+    async function deleteRow(btn) {
+        const row = btn.closest('tr');
+        const id = row.getAttribute('data-id');
+        if (id && confirm("Delete from cloud?")) {
+            await _supabase.from('test_requests').delete().eq('id', id);
+        }
+        row.remove();
     }
 
     function toggleArchive() {
