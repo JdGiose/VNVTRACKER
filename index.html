@@ -29,7 +29,7 @@
 <div class="container">
     <div class="header">
         <h2 style="color:var(--arjo-blue); margin:0;">V&V TEST REQUEST LIST</h2>
-        <div id="sync-info" class="sync-status" style="font-size:12px; color:#666;">Cloud Status: Ready</div>
+        <div id="sync-info" style="font-size:12px; color:#666;">Cloud Status: Ready</div>
     </div>
 
     <table id="request-table">
@@ -48,7 +48,7 @@
     </table>
 
     <div class="btn-row">
-        <button class="btn-add" onclick="addRow()">+ New Request</button>
+        <button class="btn-add" onclick="addNewRow()">+ New Request</button>
         <button class="btn-sync" onclick="syncToSupabase()">💾 SAVE TO CLOUD</button>
         <button class="btn-archive-toggle" onclick="toggleArchive()">📦 VIEW ARCHIVE</button>
     </div>
@@ -70,7 +70,7 @@
 </div>
 
 <script>
-    // PRESERVED YOUR KEYS
+    // CREDENTIALS - MATCHING YOUR SQL
     const SUPABASE_URL = 'https://htborrnoqiuvbvlszdos.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_IAtSD7zvmTvamDHA87uijA_7usXI9lX';
     const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -106,7 +106,7 @@
         "Visual Inspection": { days: 0.1, desc: "Post-test cosmetic and integrity check." }
     };
 
-    let ARCHIVE_DATA = []; // Store fetched archive here to avoid button syntax issues
+    let GLOBAL_ARCHIVE = [];
 
     function getCompletionDate(days) {
         const d = new Date();
@@ -114,7 +114,9 @@
         return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     }
 
-    function addRow(data = {}) {
+    function addNewRow() { renderRow(); }
+
+    function renderRow(data = {}) {
         const tbody = document.getElementById('test-body');
         const tr = document.createElement('tr');
         if (data.id) tr.setAttribute('data-id', data.id);
@@ -151,18 +153,20 @@
     async function checkComplete(sel) {
         if(sel.value === 'Complete') {
             const row = sel.closest('tr');
-            if(confirm("Archive this request?")) {
+            if(confirm("Move to Archive?")) {
                 const archiveData = {
-                    cat: row.querySelector('.f-cat').value,
-                    req: row.querySelector('.f-req').value,
-                    eng: row.querySelector('.f-eng').value,
-                    desc: row.querySelector('.f-desc').value,
+                    original_id: row.getAttribute('data-id') || null,
+                    category: row.querySelector('.f-cat').value,
+                    requestor: row.querySelector('.f-req').value,
+                    engineer: row.querySelector('.f-eng').value,
+                    description: row.querySelector('.f-desc').value,
                     est_completion: row.querySelector('.est-date-tag').innerText,
                     closed_at: new Date().toLocaleString('en-GB')
                 };
-                const id = row.getAttribute('data-id');
+                
                 const { error } = await _supabase.from('archived_requests').insert([archiveData]);
                 if (!error) {
+                    const id = row.getAttribute('data-id');
                     if (id) await _supabase.from('test_requests').delete().eq('id', id);
                     row.remove();
                     fetchFromCloud();
@@ -173,8 +177,8 @@
 
     async function syncToSupabase() {
         const rows = document.querySelectorAll('#test-body tr');
-        const activeData = Array.from(rows).map(tr => {
-            const d = {
+        const activeRows = Array.from(rows).map(tr => {
+            const rowData = {
                 category: tr.querySelector('.f-cat').value,
                 requestor: tr.querySelector('.f-req').value,
                 engineer: tr.querySelector('.f-eng').value,
@@ -183,54 +187,53 @@
                 status: tr.querySelector('.f-status').value
             };
             const id = tr.getAttribute('data-id');
-            if (id) d.id = id;
-            return d;
+            if (id) rowData.id = id;
+            return rowData;
         });
-        
-        document.getElementById('sync-info').innerText = "Saving...";
-        const { error } = await _supabase.from('test_requests').upsert(activeData);
-        if (!error) fetchFromCloud();
-        else alert("Sync Error: " + error.message);
+
+        document.getElementById('sync-info').innerText = "Syncing...";
+        const { error } = await _supabase.from('test_requests').upsert(activeRows);
+        if (error) alert("Sync Error: " + error.message);
+        else fetchFromCloud();
     }
 
     async function fetchFromCloud() {
         const { data: live } = await _supabase.from('test_requests').select('*').order('created_at', { ascending: true });
         if (live) {
-            const tbody = document.getElementById('test-body');
-            tbody.innerHTML = "";
-            live.forEach(item => addRow(item));
-            if (live.length === 0) addRow();
+            document.getElementById('test-body').innerHTML = "";
+            live.forEach(item => renderRow(item));
+            if (live.length === 0) renderRow();
         }
-        
+
         const { data: arch } = await _supabase.from('archived_requests').select('*').order('archived_at', { ascending: false });
         if (arch) {
-            ARCHIVE_DATA = arch; // Save to global variable
+            GLOBAL_ARCHIVE = arch;
             const abody = document.getElementById('archive-body');
             abody.innerHTML = arch.map((a, index) => `
                 <tr>
-                    <td>${a.cat}</td>
-                    <td>${a.req || '-'}</td>
+                    <td>${a.category}</td>
+                    <td>${a.requestor || '-'}</td>
                     <td><span style="font-size:10px; color:#666;">Closed: ${a.closed_at}</span></td>
-                    <td><button class="btn-restore" onclick="restoreItem(${index})">✏️ Edit</button></td>
+                    <td><button class="btn-restore" onclick="restoreFromArchive(${index})">✏️ Restore</button></td>
                 </tr>
             `).join('');
         }
-        document.getElementById('sync-info').innerText = "✅ Cloud Connected: " + new Date().toLocaleTimeString();
+        document.getElementById('sync-info').innerText = "✅ Last Sync: " + new Date().toLocaleTimeString();
     }
 
-    async function restoreItem(index) {
-        const item = ARCHIVE_DATA[index];
+    async function restoreFromArchive(index) {
+        const item = GLOBAL_ARCHIVE[index];
         const { error } = await _supabase.from('archived_requests').delete().eq('id', item.id);
-        if(!error) {
-            addRow({ 
-                category: item.cat, 
-                requestor: item.req, 
-                engineer: item.eng, 
-                description: item.desc, 
+        if (!error) {
+            renderRow({
+                category: item.category,
+                requestor: item.requestor,
+                engineer: item.engineer,
+                description: item.description,
                 est_completion: item.est_completion,
-                status: 'Testing' 
+                status: 'Pending'
             });
-            window.scrollTo(0,0);
+            window.scrollTo(0, 0);
             fetchFromCloud();
         }
     }
@@ -238,11 +241,11 @@
     async function deleteRow(btn) {
         const row = btn.closest('tr');
         const id = row.getAttribute('data-id');
-        if (id && confirm("Delete from cloud permanently?")) {
+        if (id && confirm("Delete permanently from Cloud?")) {
             await _supabase.from('test_requests').delete().eq('id', id);
         }
         row.remove();
-        if (document.querySelectorAll('#test-body tr').length === 0) addRow();
+        if (document.querySelectorAll('#test-body tr').length === 0) renderRow();
     }
 
     function toggleArchive() {
