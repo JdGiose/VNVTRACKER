@@ -70,7 +70,7 @@
 </div>
 
 <script>
-    // YOUR ORIGINAL KEYS PRESERVED
+    // PRESERVED YOUR KEYS
     const SUPABASE_URL = 'https://htborrnoqiuvbvlszdos.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_IAtSD7zvmTvamDHA87uijA_7usXI9lX';
     const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -105,6 +105,8 @@
         "Transportation & Packaging": { days: 14, desc: "ASTM D4169 shipping/vibration/drop tests." },
         "Visual Inspection": { days: 0.1, desc: "Post-test cosmetic and integrity check." }
     };
+
+    let ARCHIVE_DATA = []; // Store fetched archive here to avoid button syntax issues
 
     function getCompletionDate(days) {
         const d = new Date();
@@ -160,11 +162,11 @@
                 };
                 const id = row.getAttribute('data-id');
                 const { error } = await _supabase.from('archived_requests').insert([archiveData]);
-                if (!error && id) {
-                    await _supabase.from('test_requests').delete().eq('id', id);
+                if (!error) {
+                    if (id) await _supabase.from('test_requests').delete().eq('id', id);
                     row.remove();
                     fetchFromCloud();
-                }
+                } else { alert("Archive Error: " + error.message); }
             } else { sel.value = "Testing"; }
         }
     }
@@ -184,37 +186,42 @@
             if (id) d.id = id;
             return d;
         });
+        
+        document.getElementById('sync-info').innerText = "Saving...";
         const { error } = await _supabase.from('test_requests').upsert(activeData);
         if (!error) fetchFromCloud();
+        else alert("Sync Error: " + error.message);
     }
 
     async function fetchFromCloud() {
         const { data: live } = await _supabase.from('test_requests').select('*').order('created_at', { ascending: true });
         if (live) {
-            document.getElementById('test-body').innerHTML = "";
+            const tbody = document.getElementById('test-body');
+            tbody.innerHTML = "";
             live.forEach(item => addRow(item));
             if (live.length === 0) addRow();
         }
         
-        // MATCHING YOUR SQL NAMES: cat, req, eng, desc
         const { data: arch } = await _supabase.from('archived_requests').select('*').order('archived_at', { ascending: false });
         if (arch) {
+            ARCHIVE_DATA = arch; // Save to global variable
             const abody = document.getElementById('archive-body');
-            abody.innerHTML = arch.map(a => `
+            abody.innerHTML = arch.map((a, index) => `
                 <tr>
                     <td>${a.cat}</td>
                     <td>${a.req || '-'}</td>
-                    <td><span class="closed-stamp">Closed: ${a.closed_at}</span></td>
-                    <td><button class="btn-restore" onclick='restoreItem(${JSON.stringify(a)})'>✏️ Edit</button></td>
+                    <td><span style="font-size:10px; color:#666;">Closed: ${a.closed_at}</span></td>
+                    <td><button class="btn-restore" onclick="restoreItem(${index})">✏️ Edit</button></td>
                 </tr>
             `).join('');
         }
+        document.getElementById('sync-info').innerText = "✅ Cloud Connected: " + new Date().toLocaleTimeString();
     }
 
-    async function restoreItem(item) {
+    async function restoreItem(index) {
+        const item = ARCHIVE_DATA[index];
         const { error } = await _supabase.from('archived_requests').delete().eq('id', item.id);
         if(!error) {
-            // Mapping short names back to long names for the live list
             addRow({ 
                 category: item.cat, 
                 requestor: item.req, 
@@ -224,16 +231,18 @@
                 status: 'Testing' 
             });
             window.scrollTo(0,0);
+            fetchFromCloud();
         }
     }
 
     async function deleteRow(btn) {
         const row = btn.closest('tr');
         const id = row.getAttribute('data-id');
-        if (id && confirm("Delete from cloud?")) {
+        if (id && confirm("Delete from cloud permanently?")) {
             await _supabase.from('test_requests').delete().eq('id', id);
         }
         row.remove();
+        if (document.querySelectorAll('#test-body tr').length === 0) addRow();
     }
 
     function toggleArchive() {
