@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>ARJO V&V TEST REQUESTS - LIVE</title>
+    <title>ARJO V&V TEST REQUESTS</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root { --arjo-blue: #005aa7; --success: #28a745; --danger: #d9534f; --bg: #f4f7f9; }
@@ -15,13 +15,13 @@
         input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 11px; }
         textarea { height: 50px; resize: vertical; }
         .est-date-tag { font-weight: bold; color: var(--arjo-blue); font-size: 10px; }
-        .sync-status { font-size: 12px; font-weight: bold; }
         .btn-row { display: flex; gap: 10px; margin: 20px 0; }
         button { cursor: pointer; border: none; border-radius: 4px; padding: 8px 12px; font-weight: bold; font-size: 11px; }
         .btn-add { background: var(--success); color: white; }
         .btn-sync { background: var(--arjo-blue); color: white; }
         .btn-archive-toggle { background: #6f42c1; color: white; }
         .archive-section { margin-top: 30px; padding: 15px; border: 1px dashed #ccc; background: #fafafa; border-radius: 8px; display: none; }
+        .btn-restore { background: #e9ecef; color: var(--arjo-blue); border: 1px solid var(--arjo-blue); }
     </style>
 </head>
 <body>
@@ -29,7 +29,7 @@
 <div class="container">
     <div class="header">
         <h2 style="color:var(--arjo-blue); margin:0;">V&V TEST REQUEST LIST</h2>
-        <div id="sync-info" class="sync-status">Cloud: Initializing...</div>
+        <div id="sync-info" class="sync-status" style="font-size:12px; color:#666;">Cloud Status: Ready</div>
     </div>
 
     <table id="request-table">
@@ -37,8 +37,8 @@
             <tr>
                 <th style="width: 14%;">Category</th>
                 <th style="width: 12%;">Requestor</th>
-                <th style="width: 12%;">Engineer</th>
-                <th style="width: 28%;">Description</th>
+                <th style="width: 12%;">Assigned Eng.</th>
+                <th style="width: 28%;">Description & Justification</th>
                 <th style="width: 12%;">Est. Completion</th>
                 <th style="width: 12%;">Status</th>
                 <th style="width: 45px;"></th>
@@ -48,8 +48,8 @@
     </table>
 
     <div class="btn-row">
-        <button class="btn-add" onclick="addNewRow()">+ New Request</button>
-        <button class="btn-sync" onclick="syncToSupabase()">💾 SYNC TO CLOUD</button>
+        <button class="btn-add" onclick="addRow()">+ New Request</button>
+        <button class="btn-sync" onclick="syncToSupabase()">💾 SAVE TO CLOUD</button>
         <button class="btn-archive-toggle" onclick="toggleArchive()">📦 VIEW ARCHIVE</button>
     </div>
 
@@ -58,10 +58,10 @@
         <table id="archive-table">
             <thead>
                 <tr>
-                    <th>Category</th>
-                    <th>Requestor</th>
-                    <th>Engineer</th>
-                    <th>Details</th>
+                    <th style="width: 15%;">Category</th>
+                    <th style="width: 15%;">Requestor</th>
+                    <th style="width: 50%;">Closure Details</th>
+                    <th style="width: 20%;">Action</th>
                 </tr>
             </thead>
             <tbody id="archive-body"></tbody>
@@ -70,65 +70,109 @@
 </div>
 
 <script>
-    // FIX 1: Use variables correctly in createClient
+    // FIXED KEYS
     const SUPABASE_URL = 'https://htborrnoqiuvbvlszdos.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_IAtSD7zvmTvamDHA87uijA_7usXI9lX';
     const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    // RESTORED YOUR FULL TEST LIST
     const TEST_CONFIG = {
-        "Sound / Acoustic": { days: 0.2, desc: "Noise level verification (dB)." },
+        "Accelerated Aging": { days: 14, desc: "Heated chamber/Arrhenius Eq for shelf-life verification." },
+        "Biocompatibility": { days: 10, desc: "ISO 10993 (Cytotoxicity, Irritation, Sensitization)." },
+        "Compliance": { days: 7, desc: "General safety (IEC 60601-1, 60601-1-2 EMC)." },
+        "Cleaning & Disinfection": { days: 3, desc: "Wipe/Laundry tests per SOP-100014447." },
+        "Cycling": { days: 14, desc: "Safety-related cycle counts (Endurance)." },
+        "Cybersecurity": { days: 5, desc: "Penetration testing and vulnerability assessment (SaMD)." },
+        "Demonstration": { days: 1, desc: "Tool-less activity verification (Mattress Platform/Rails)." },
+        "Durability": { days: 10, desc: "Long-term stress testing for wear and tear." },
+        "Electrical": { days: 4, desc: "Battery, Mains, and Leakage current testing." },
+        "Environmental Stress": { days: 7, desc: "HALT/HASS (Highly Accelerated Life/Stress)." },
+        "Flammability": { days: 5, desc: "Standards: 16 CFR 1633, BS 597, Crib 5, etc." },
+        "Functional (Pre/Post Stress)": { days: 2, desc: "Testing DUT post-impact/shipping/humidity." },
+        "Functionality": { days: 2, desc: "Interfaces, UI, boot-times, bandwidth checks." },
+        "Human Factors (Usability)": { days: 10, desc: "Formative/Summative evaluation (IEC 62366-1)." },
+        "Interface Pressure Mapping": { days: 3, desc: "Clinical performance (Tactilus mapping)." },
+        "Labelling": { days: 1, desc: "IFU and marking durability verification." },
+        "Load Testing": { days: 4, desc: "Safe Working Load (SWL) and static stability." },
+        "Material Properties": { days: 5, desc: "Tear, Tensile, Elongation, Hydrostatic resistance." },
+        "Mattress (Hex Roller/Cornell)": { days: 14, desc: "Standard Tests: ASTM F1566 Mattress wear." },
+        "Measurement": { days: 1, desc: "Physical dimensions (W/L/H) and mass." },
+        "Performance": { days: 5, desc: "System function vs. time/specification." },
+        "Reliability": { days: 14, desc: "MTBF and fatigue limit characterization." },
+        "Safety Gaps (Entrapment)": { days: 2, desc: "IEC 60601-2-52 Head/Neck cone tests." },
+        "Serviceability": { days: 2, desc: "Ease of repair and maintenance access." },
+        "Sound / Acoustic": { days: 0.2, desc: "Noise level verification (dB)." }, 
+        "Temperature & Humidity": { days: 7, desc: "Operating and Shipping environments." },
         "Transportation & Packaging": { days: 14, desc: "ASTM D4169 shipping/vibration/drop tests." },
-        "EMC": { days: 7, desc: "Electromagnetic Compatibility testing." }
-        // ... (other categories)
+        "Visual Inspection": { days: 0.1, desc: "Post-test cosmetic and integrity check." }
     };
 
-    // FIX 2: Automatic Fetch on Load
-    async function fetchFromSupabase() {
-        document.getElementById('sync-info').innerText = "Cloud: Fetching...";
-        const { data, error } = await _supabase.from('test_requests').select('*').order('created_at', { ascending: true });
-        
-        if (error) {
-            document.getElementById('sync-info').innerText = "❌ Cloud Error: " + error.message;
-            return;
-        }
-
-        const tbody = document.getElementById('test-body');
-        tbody.innerHTML = "";
-        data.forEach(item => renderRow(item));
-        if (data.length === 0) addNewRow();
-        document.getElementById('sync-info').innerText = "✅ Cloud Connected";
+    function getCompletionDate(days) {
+        const d = new Date();
+        d.setDate(d.getDate() + Math.ceil(days));
+        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     }
 
-    function renderRow(data = {}) {
+    function addRow(data = {}) {
         const tbody = document.getElementById('test-body');
         const tr = document.createElement('tr');
-        if (data.id) tr.setAttribute('data-id', data.id); // Remember the ID so we don't duplicate!
+        if (data.id) tr.setAttribute('data-id', data.id);
+        const cat = data.category || "Accelerated Aging";
+        const sortedKeys = Object.keys(TEST_CONFIG).sort();
+        let catOptions = sortedKeys.map(k => `<option value="${k}" ${k === cat ? 'selected' : ''}>${k}</option>`).join('');
 
         tr.innerHTML = `
-            <td><input class="f-cat" value="${data.category || 'Sound / Acoustic'}"></td>
-            <td><input class="f-req" value="${data.requestor || ''}"></td>
-            <td><input class="f-eng" value="${data.engineer || ''}"></td>
-            <td><textarea class="f-desc">${data.description || ''}</textarea></td>
-            <td><span class="est-date-tag">${data.est_completion || '4 Hours'}</span></td>
+            <td><select class="f-cat" onchange="updateRow(this)">${catOptions}</select></td>
+            <td><input type="text" class="f-req" value="${data.requestor || ''}"></td>
+            <td><input type="text" class="f-eng" value="${data.engineer || ''}"></td>
+            <td><textarea class="f-desc">${data.description || TEST_CONFIG[cat].desc}</textarea></td>
+            <td><span class="est-date-tag">${data.est_completion || getCompletionDate(TEST_CONFIG[cat].days)}</span></td>
             <td>
-                <select class="f-status">
-                    <option value="Pending" ${data.status==='Pending'?'selected':''}>Pending</option>
-                    <option value="Testing" ${data.status==='Testing'?'selected':''}>Testing</option>
-                    <option value="Complete" ${data.status==='Complete'?'selected':''}>Complete</option>
+                <select class="f-status" onchange="checkComplete(this)">
+                    <option value="Pending" ${data.status==='Pending'?'selected':''}>⏳ Pending</option>
+                    <option value="Testing" ${data.status==='Testing'?'selected':''}>⚙️ Testing</option>
+                    <option value="Complete">🏁 Complete</option>
                 </select>
             </td>
-            <td><button onclick="this.closest('tr').remove()">✕</button></td>
+            <td><button style="color:red" onclick="this.closest('tr').remove()">✕</button></td>
         `;
         tbody.appendChild(tr);
     }
 
-    function addNewRow() { renderRow(); }
+    function updateRow(sel) {
+        const row = sel.closest('tr');
+        const config = TEST_CONFIG[sel.value];
+        row.querySelector('.f-desc').value = config.desc;
+        row.querySelector('.est-date-tag').innerText = getCompletionDate(config.days);
+    }
 
-    // FIX 3: Correct Upsert logic
+    async function checkComplete(sel) {
+        if(sel.value === 'Complete') {
+            const row = sel.closest('tr');
+            if(confirm("Archive this? You can restore/edit it later from the archive section.")) {
+                const data = {
+                    category: row.querySelector('.f-cat').value,
+                    requestor: row.querySelector('.f-req').value,
+                    engineer: row.querySelector('.f-eng').value,
+                    description: row.querySelector('.f-desc').value,
+                    est_completion: row.querySelector('.est-date-tag').innerText,
+                    closed_at: new Date().toLocaleString('en-GB')
+                };
+                const id = row.getAttribute('data-id');
+                const { error } = await _supabase.from('archived_requests').insert([data]);
+                if (!error && id) {
+                    await _supabase.from('test_requests').delete().eq('id', id);
+                    row.remove();
+                    fetchFromCloud();
+                }
+            } else { sel.value = "Testing"; }
+        }
+    }
+
     async function syncToSupabase() {
         const rows = document.querySelectorAll('#test-body tr');
         const activeData = Array.from(rows).map(tr => {
-            const rowData = {
+            const d = {
                 category: tr.querySelector('.f-cat').value,
                 requestor: tr.querySelector('.f-req').value,
                 engineer: tr.querySelector('.f-eng').value,
@@ -137,18 +181,42 @@
                 status: tr.querySelector('.f-status').value
             };
             const id = tr.getAttribute('data-id');
-            if (id) rowData.id = id;
-            return rowData;
+            if (id) d.id = id;
+            return d;
         });
 
         document.getElementById('sync-info').innerText = "Syncing...";
         const { error } = await _supabase.from('test_requests').upsert(activeData);
+        if (error) alert(error.message);
+        else fetchFromCloud();
+    }
 
-        if (error) {
-            alert("Sync Failed: " + error.message);
-        } else {
-            document.getElementById('sync-info').innerText = "✅ Saved " + new Date().toLocaleTimeString();
-            fetchFromSupabase(); // Reload to get new IDs
+    async function fetchFromCloud() {
+        const { data: live } = await _supabase.from('test_requests').select('*').order('created_at', { ascending: true });
+        if (live) {
+            document.getElementById('test-body').innerHTML = "";
+            live.forEach(item => addRow(item));
+            if (live.length === 0) addRow();
+        }
+        const { data: arch } = await _supabase.from('archived_requests').select('*').order('archived_at', { ascending: false });
+        if (arch) {
+            document.getElementById('archive-body').innerHTML = arch.map(a => `
+                <tr>
+                    <td>${a.category}</td>
+                    <td>${a.requestor}</td>
+                    <td>Closed: ${a.closed_at}</td>
+                    <td><button class="btn-restore" onclick='restoreItem(${JSON.stringify(a)})'>✏️ Edit</button></td>
+                </tr>
+            `).join('');
+        }
+        document.getElementById('sync-info').innerText = "✅ Last Sync: " + new Date().toLocaleTimeString();
+    }
+
+    async function restoreItem(item) {
+        const { error } = await _supabase.from('archived_requests').delete().eq('id', item.id);
+        if(!error) {
+            addRow({ ...item, status: 'Testing' });
+            window.scrollTo(0,0);
         }
     }
 
@@ -157,7 +225,7 @@
         area.style.display = (area.style.display === 'block') ? 'none' : 'block';
     }
 
-    window.onload = fetchFromSupabase;
+    window.onload = fetchFromCloud;
 </script>
 </body>
 </html>
