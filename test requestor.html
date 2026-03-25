@@ -2,24 +2,20 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>ARJO V&V TEST REQUESTS</title>
+    <title>ARJO V&V TEST REQUESTS - LIVE</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root { --arjo-blue: #005aa7; --success: #28a745; --danger: #d9534f; --bg: #f4f7f9; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); padding: 20px; color: #333; }
         .container { max-width: 1250px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
         .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid var(--arjo-blue); margin-bottom: 15px; }
-        
         table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
         th { background: #f1f4f8; text-align: left; padding: 10px; font-size: 0.75em; border-bottom: 2px solid var(--arjo-blue); color: var(--arjo-blue); text-transform: uppercase; }
         td { padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; font-size: 11px; }
-        
         input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 11px; }
         textarea { height: 50px; resize: vertical; }
-
         .est-date-tag { font-weight: bold; color: var(--arjo-blue); font-size: 10px; }
         .closed-stamp { color: #666; font-style: italic; font-size: 10px; display: block; }
-        
         .btn-row { display: flex; gap: 10px; margin: 20px 0; }
         button { cursor: pointer; border: none; border-radius: 4px; padding: 8px 12px; font-weight: bold; font-size: 11px; transition: 0.2s; }
         .btn-add { background: var(--success); color: white; }
@@ -27,10 +23,8 @@
         .btn-archive-toggle { background: #6f42c1; color: white; }
         .btn-del { background: #fff; color: var(--danger); border: 1px solid var(--danger); }
         .btn-restore { background: #e9ecef; color: var(--arjo-blue); border: 1px solid var(--arjo-blue); }
-        .btn-restore:hover { background: var(--arjo-blue); color: white; }
-
         .archive-section { margin-top: 30px; padding: 15px; border: 1px dashed #ccc; background: #fafafa; border-radius: 8px; display: none; }
-        .sync-status { font-size: 12px; font-style: italic; color: #666; }
+        .sync-status { font-size: 12px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -38,7 +32,7 @@
 <div class="container">
     <div class="header">
         <h2 style="color:var(--arjo-blue); margin:0;">V&V TEST REQUEST LIST</h2>
-        <div id="sync-info" class="sync-status">Cloud Status: Not Connected</div>
+        <div id="sync-info" class="sync-status" style="color:#d9534f;">Cloud: Initializing...</div>
     </div>
 
     <table id="request-table">
@@ -58,7 +52,7 @@
 
     <div class="btn-row">
         <button class="btn-add" onclick="addRow()">+ New Request</button>
-        <button class="btn-sync" onclick="syncToSupabase()">💾 SYNC TO CLOUD</button>
+        <button class="btn-sync" onclick="syncToSupabase()">💾 SYNC ALL TO CLOUD</button>
         <button class="btn-archive-toggle" onclick="toggleArchive()">📦 VIEW ARCHIVE</button>
     </div>
 
@@ -81,13 +75,13 @@
 
 <script>
     // ==========================================
-    // PLACE YOUR SUPABASE CREDENTIALS HERE
+    // CONFIGURATION (MATCHED TO YOUR UPLOADED FILE)
     // ==========================================
     const SUPABASE_URL = 'https://htborrnoqiuvbvlszdos.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_IAtSD7zvmTvamDHA87uijA_7usXI9lX';
 
-    // Initialize the Supabase client
-    const _supabase = supabase.createClient(https://htborrnoqiuvbvlszdos.supabase.co, sb_publishable_IAtSD7zvmTvamDHA87uijA_7usXI9lX);
+    // Initialize the Supabase client correctly
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     // ==========================================
 
     const TEST_CONFIG = {
@@ -131,16 +125,19 @@
     function addRow(data = {}) {
         const tbody = document.getElementById('test-body');
         const tr = document.createElement('tr');
-        const cat = data.cat || "Accelerated Aging";
+        // If data has a DB ID, we store it in a data-attribute to allow updates instead of new inserts
+        if(data.id) tr.setAttribute('data-db-id', data.id);
+
+        const cat = data.category || "Accelerated Aging";
         const sortedKeys = Object.keys(TEST_CONFIG).sort();
         let catOptions = sortedKeys.map(k => `<option value="${k}" ${k === cat ? 'selected' : ''}>${k}</option>`).join('');
 
         tr.innerHTML = `
             <td><select class="f-cat" onchange="updateRow(this)">${catOptions}</select></td>
-            <td><input type="text" class="f-req" placeholder="Requestor" value="${data.req || ''}"></td>
-            <td><input type="text" class="f-eng" placeholder="Engineer" value="${data.eng || ''}"></td>
-            <td><textarea class="f-desc">${data.desc || TEST_CONFIG[cat].desc}</textarea></td>
-            <td><span class="est-date-tag">${data.est || getCompletionDate(TEST_CONFIG[cat].days)}</span></td>
+            <td><input type="text" class="f-req" placeholder="Requestor" value="${data.requestor || ''}"></td>
+            <td><input type="text" class="f-eng" placeholder="Engineer" value="${data.engineer || ''}"></td>
+            <td><textarea class="f-desc">${data.description || TEST_CONFIG[cat].desc}</textarea></td>
+            <td><span class="est-date-tag">${data.est_completion || getCompletionDate(TEST_CONFIG[cat].days)}</span></td>
             <td>
                 <select class="f-status" onchange="checkComplete(this)">
                     <option value="Pending" ${data.status==='Pending'?'selected':''}>⏳ Pending</option>
@@ -148,7 +145,7 @@
                     <option value="Complete">🏁 Complete</option>
                 </select>
             </td>
-            <td><button class="btn-del" onclick="this.closest('tr').remove()">✕</button></td>
+            <td><button class="btn-del" onclick="deleteRow(this)">✕</button></td>
         `;
         tbody.appendChild(tr);
     }
@@ -160,47 +157,111 @@
         row.querySelector('.est-date-tag').innerText = getCompletionDate(config.days);
     }
 
-    function checkComplete(sel) {
+    async function checkComplete(sel) {
         if(sel.value === 'Complete') {
             const row = sel.closest('tr');
-            if(confirm("Move to archive? You can still edit/restore it later.")) {
-                archiveTest(row);
+            if(confirm("Move to archive? This will move it to the Cloud Archive table.")) {
+                await archiveTest(row);
             } else {
                 sel.value = "Testing";
             }
         }
     }
 
-    function archiveTest(row) {
-        const abody = document.getElementById('archive-body');
-        const tr = document.createElement('tr');
-        const data = {
-            cat: row.querySelector('.f-cat').value,
-            req: row.querySelector('.f-req').value,
-            eng: row.querySelector('.f-eng').value,
-            desc: row.querySelector('.f-desc').value,
-            est: row.querySelector('.est-date-tag').innerText,
-            closed: new Date().toLocaleString('en-GB')
-        };
-        tr.innerHTML = `
-            <td>${data.cat}</td>
-            <td>${data.req || '-'}</td>
-            <td>${data.eng || '-'}</td>
-            <td><span class="closed-stamp">Closed: ${data.closed}</span></td>
-            <td>
-                <button class="btn-restore" onclick="restoreRow(this, ${JSON.stringify(data).replace(/"/g, '&quot;')})">✏️ Edit / Restore</button>
-            </td>
-        `;
-        abody.appendChild(tr);
+    async function deleteRow(btn) {
+        const row = btn.closest('tr');
+        const dbId = row.getAttribute('data-db-id');
+        if (dbId) {
+            if(confirm("Delete from cloud permanently?")) {
+                const { error } = await _supabase.from('test_requests').delete().eq('id', dbId);
+                if (error) alert("Error deleting: " + error.message);
+            } else { return; }
+        }
         row.remove();
     }
 
-    function restoreRow(btn, data) {
-        addRow({
-            cat: data.cat, req: data.req, eng: data.eng, desc: data.desc, est: data.est, status: "Testing"
+    async function archiveTest(row) {
+        const dbId = row.getAttribute('data-db-id');
+        const data = {
+            category: row.querySelector('.f-cat').value,
+            requestor: row.querySelector('.f-req').value,
+            engineer: row.querySelector('.f-eng').value,
+            description: row.querySelector('.f-desc').value,
+            est_completion: row.querySelector('.est-date-tag').innerText,
+            closed_at: new Date().toLocaleString('en-GB')
+        };
+
+        // 1. Add to archive table
+        const { error: insErr } = await _supabase.from('archived_requests').insert([data]);
+        
+        // 2. Remove from live table
+        if (!insErr && dbId) {
+            await _supabase.from('test_requests').delete().eq('id', dbId);
+            row.remove();
+            fetchFromSupabase(); // Refresh
+        } else if (insErr) {
+            alert("Archive failed: " + insErr.message);
+        } else {
+            row.remove();
+        }
+    }
+
+    async function syncToSupabase() {
+        const rows = document.querySelectorAll('#test-body tr');
+        const activeData = Array.from(rows).map(tr => {
+            const item = {
+                category: tr.querySelector('.f-cat').value,
+                requestor: tr.querySelector('.f-req').value,
+                engineer: tr.querySelector('.f-eng').value,
+                description: tr.querySelector('.f-desc').value,
+                est_completion: tr.querySelector('.est-date-tag').innerText,
+                status: tr.querySelector('.f-status').value
+            };
+            // If row already has a DB ID, include it so Supabase updates instead of creating a duplicate
+            const dbId = tr.getAttribute('data-db-id');
+            if (dbId) item.id = dbId;
+            return item;
         });
-        btn.closest('tr').remove();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        document.getElementById('sync-info').innerText = "Syncing...";
+        
+        const { error } = await _supabase.from('test_requests').upsert(activeData);
+
+        if (error) {
+            document.getElementById('sync-info').style.color = "#d9534f";
+            document.getElementById('sync-info').innerText = "❌ Error: " + error.message;
+        } else {
+            document.getElementById('sync-info').style.color = "#28a745";
+            document.getElementById('sync-info').innerText = "✅ Cloud Synced: " + new Date().toLocaleTimeString();
+            fetchFromSupabase(); // Refresh to get IDs for new rows
+        }
+    }
+
+    async function fetchFromSupabase() {
+        // Fetch Live
+        const { data: live, error: err1 } = await _supabase.from('test_requests').select('*').order('created_at', { ascending: true });
+        if (!err1) {
+            document.getElementById('test-body').innerHTML = "";
+            live.forEach(item => addRow(item));
+            if(live.length === 0) addRow(); // Add empty row if database is empty
+            document.getElementById('sync-info').style.color = "#28a745";
+            document.getElementById('sync-info').innerText = "✅ Cloud Connected";
+        }
+
+        // Fetch Archive
+        const { data: arch, error: err2 } = await _supabase.from('archived_requests').select('*').limit(20).order('archived_at', { ascending: false });
+        if (!err2) {
+            const abody = document.getElementById('archive-body');
+            abody.innerHTML = arch.map(a => `
+                <tr>
+                    <td>${a.category}</td>
+                    <td>${a.requestor || '-'}</td>
+                    <td>${a.engineer || '-'}</td>
+                    <td><span class="closed-stamp">Closed: ${a.closed_at}</span></td>
+                    <td><small>Archived</small></td>
+                </tr>
+            `).join('');
+        }
     }
 
     function toggleArchive() {
@@ -208,39 +269,7 @@
         area.style.display = (area.style.display === 'block') ? 'none' : 'block';
     }
 
-    async function syncToSupabase() {
-        if (SUPABASE_URL.includes('YOUR_PROJECT_REF')) {
-            alert("Please set your Supabase URL and Key in the script first!");
-            return;
-        }
-
-        const activeData = [];
-        document.querySelectorAll('#test-body tr').forEach(tr => {
-            activeData.push({
-                category: tr.querySelector('.f-cat').value,
-                requestor: tr.querySelector('.f-req').value,
-                engineer: tr.querySelector('.f-eng').value,
-                description: tr.querySelector('.f-desc').value,
-                status: tr.querySelector('.f-status').value
-            });
-        });
-
-        document.getElementById('sync-info').innerText = "Syncing...";
-        
-        // Example push logic (assumes a table named 'test_requests')
-        const { error } = await _supabase
-            .from('test_requests')
-            .upsert(activeData);
-
-        if (error) {
-            console.error(error);
-            document.getElementById('sync-info').innerText = "Sync Error!";
-        } else {
-            document.getElementById('sync-info').innerText = "Last Cloud Sync: " + new Date().toLocaleTimeString();
-        }
-    }
-
-    window.onload = () => { addRow(); };
+    window.onload = fetchFromSupabase;
 </script>
 </body>
 </html>
