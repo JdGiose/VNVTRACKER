@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ARJO V&V TEST REQUESTS</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root { --arjo-blue: #005aa7; --success: #28a745; --danger: #d9534f; --bg: #f4f7f9; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); padding: 20px; color: #333; }
+        .container { max-width: 1250px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid var(--arjo-blue); margin-bottom: 15px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+        th { background: #f1f4f8; text-align: left; padding: 10px; font-size: 0.75em; border-bottom: 2px solid var(--arjo-blue); color: var(--arjo-blue); text-transform: uppercase; }
+        td { padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; font-size: 11px; }
+        
+        input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 11px; }
+        textarea { height: 50px; resize: vertical; }
+
+        .est-date-tag { font-weight: bold; color: var(--arjo-blue); font-size: 10px; }
+        .closed-stamp { color: #666; font-style: italic; font-size: 10px; display: block; }
+        
+        .btn-row { display: flex; gap: 10px; margin: 20px 0; }
+        button { cursor: pointer; border: none; border-radius: 4px; padding: 8px 12px; font-weight: bold; font-size: 11px; transition: 0.2s; }
+        .btn-add { background: var(--success); color: white; }
+        .btn-sync { background: var(--arjo-blue); color: white; }
+        .btn-archive-toggle { background: #6f42c1; color: white; }
+        .btn-del { background: #fff; color: var(--danger); border: 1px solid var(--danger); }
+        .btn-restore { background: #e9ecef; color: var(--arjo-blue); border: 1px solid var(--arjo-blue); }
+        .btn-restore:hover { background: var(--arjo-blue); color: white; }
+
+        .archive-section { margin-top: 30px; padding: 15px; border: 1px dashed #ccc; background: #fafafa; border-radius: 8px; display: none; }
+        .sync-status { font-size: 12px; font-style: italic; color: #666; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h2 style="color:var(--arjo-blue); margin:0;">V&V TEST REQUEST LIST</h2>
+        <div id="sync-info" class="sync-status">Cloud Sync: Active</div>
+    </div>
+
+    <table id="request-table">
+        <thead>
+            <tr>
+                <th style="width: 14%;">Category</th>
+                <th style="width: 12%;">Requestor</th>
+                <th style="width: 12%;">Assigned Eng.</th>
+                <th style="width: 28%;">Description & Justification</th>
+                <th style="width: 12%;">Est. Completion</th>
+                <th style="width: 12%;">Status</th>
+                <th style="width: 45px;"></th>
+            </tr>
+        </thead>
+        <tbody id="test-body"></tbody>
+    </table>
+
+    <div class="btn-row">
+        <button class="btn-add" onclick="addRow()">+ New Request</button>
+        <button class="btn-sync" onclick="syncToSupabase()">💾 SYNC TO CLOUD</button>
+        <button class="btn-archive-toggle" onclick="toggleArchive()">📦 VIEW ARCHIVE</button>
+    </div>
+
+    <div id="archive-area" class="archive-section">
+        <h4 style="margin-top:0;">Archived / Completed History</h4>
+        <table id="archive-table">
+            <thead>
+                <tr>
+                    <th style="width: 15%;">Category</th>
+                    <th style="width: 15%;">Requestor</th>
+                    <th style="width: 15%;">Engineer</th>
+                    <th style="width: 35%;">Closure Details</th>
+                    <th style="width: 20%;">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="archive-body"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const TEST_CONFIG = {
+        "Accelerated Aging": { days: 14, desc: "Heated chamber/Arrhenius Eq for shelf-life verification." },
+        "Biocompatibility": { days: 10, desc: "ISO 10993 (Cytotoxicity, Irritation, Sensitization)." },
+        "Compliance": { days: 7, desc: "General safety (IEC 60601-1, 60601-1-2 EMC)." },
+        "Cleaning & Disinfection": { days: 3, desc: "Wipe/Laundry tests per SOP-100014447." },
+        "Cycling": { days: 14, desc: "Safety-related cycle counts (Endurance)." },
+        "Cybersecurity": { days: 5, desc: "Penetration testing and vulnerability assessment (SaMD)." },
+        "Demonstration": { days: 1, desc: "Tool-less activity verification (Mattress Platform/Rails)." },
+        "Durability": { days: 10, desc: "Long-term stress testing for wear and tear." },
+        "Electrical": { days: 4, desc: "Battery, Mains, and Leakage current testing." },
+        "Environmental Stress": { days: 7, desc: "HALT/HASS (Highly Accelerated Life/Stress)." },
+        "Flammability": { days: 5, desc: "Standards: 16 CFR 1633, BS 597, Crib 5, etc." },
+        "Functional (Pre/Post Stress)": { days: 2, desc: "Testing DUT post-impact/shipping/humidity." },
+        "Functionality": { days: 2, desc: "Interfaces, UI, boot-times, bandwidth checks." },
+        "Human Factors (Usability)": { days: 10, desc: "Formative/Summative evaluation (IEC 62366-1)." },
+        "Interface Pressure Mapping": { days: 3, desc: "Clinical performance (Tactilus mapping)." },
+        "Labelling": { days: 1, desc: "IFU and marking durability verification." },
+        "Load Testing": { days: 4, desc: "Safe Working Load (SWL) and static stability." },
+        "Material Properties": { days: 5, desc: "Tear, Tensile, Elongation, Hydrostatic resistance." },
+        "Mattress (Hex Roller/Cornell)": { days: 14, desc: "Standard Tests: ASTM F1566 Mattress wear." },
+        "Measurement": { days: 1, desc: "Physical dimensions (W/L/H) and mass." },
+        "Performance": { days: 5, desc: "System function vs. time/specification." },
+        "Reliability": { days: 14, desc: "MTBF and fatigue limit characterization." },
+        "Safety Gaps (Entrapment)": { days: 2, desc: "IEC 60601-2-52 Head/Neck cone tests." },
+        "Serviceability": { days: 2, desc: "Ease of repair and maintenance access." },
+        "Sound / Acoustic": { days: 0.2, desc: "Noise level verification (dB)." }, 
+        "Temperature & Humidity": { days: 7, desc: "Operating and Shipping environments." },
+        "Transportation & Packaging": { days: 14, desc: "ASTM D4169 shipping/vibration/drop tests." },
+        "Visual Inspection": { days: 0.1, desc: "Post-test cosmetic and integrity check." }
+    };
+
+    function getCompletionDate(days) {
+        const d = new Date();
+        if (days < 1) return "Same Day (ASAP)";
+        d.setDate(d.getDate() + Math.ceil(days));
+        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+
+    function addRow(data = {}) {
+        const tbody = document.getElementById('test-body');
+        const tr = document.createElement('tr');
+        const cat = data.cat || "Accelerated Aging";
+        const sortedKeys = Object.keys(TEST_CONFIG).sort();
+        let catOptions = sortedKeys.map(k => `<option value="${k}" ${k === cat ? 'selected' : ''}>${k}</option>`).join('');
+
+        tr.innerHTML = `
+            <td><select class="f-cat" onchange="updateRow(this)">${catOptions}</select></td>
+            <td><input type="text" class="f-req" placeholder="Requestor" value="${data.req || ''}"></td>
+            <td><input type="text" class="f-eng" placeholder="Engineer" value="${data.eng || ''}"></td>
+            <td><textarea class="f-desc">${data.desc || TEST_CONFIG[cat].desc}</textarea></td>
+            <td><span class="est-date-tag">${data.est || getCompletionDate(TEST_CONFIG[cat].days)}</span></td>
+            <td>
+                <select class="f-status" onchange="checkComplete(this)">
+                    <option value="Pending" ${data.status==='Pending'?'selected':''}>⏳ Pending</option>
+                    <option value="Testing" ${data.status==='Testing'?'selected':''}>⚙️ Testing</option>
+                    <option value="Complete">🏁 Complete</option>
+                </select>
+            </td>
+            <td><button class="btn-del" onclick="this.closest('tr').remove()">✕</button></td>
+        `;
+        tbody.appendChild(tr);
+    }
+
+    function updateRow(sel) {
+        const row = sel.closest('tr');
+        const config = TEST_CONFIG[sel.value];
+        row.querySelector('.f-desc').value = config.desc;
+        row.querySelector('.est-date-tag').innerText = getCompletionDate(config.days);
+    }
+
+    function checkComplete(sel) {
+        if(sel.value === 'Complete') {
+            const row = sel.closest('tr');
+            if(confirm("Move to archive? You can still edit/restore it later.")) {
+                archiveTest(row);
+            } else {
+                sel.value = "Testing";
+            }
+        }
+    }
+
+    function archiveTest(row) {
+        const abody = document.getElementById('archive-body');
+        const tr = document.createElement('tr');
+        
+        // Capture data before removing
+        const data = {
+            cat: row.querySelector('.f-cat').value,
+            req: row.querySelector('.f-req').value,
+            eng: row.querySelector('.f-eng').value,
+            desc: row.querySelector('.f-desc').value,
+            est: row.querySelector('.est-date-tag').innerText,
+            closed: new Date().toLocaleString('en-GB')
+        };
+
+        tr.innerHTML = `
+            <td>${data.cat}</td>
+            <td>${data.req || '-'}</td>
+            <td>${data.eng || '-'}</td>
+            <td><span class="closed-stamp">Closed: ${data.closed}</span></td>
+            <td>
+                <button class="btn-restore" onclick="restoreRow(this, ${JSON.stringify(data).replace(/"/g, '&quot;')})">✏️ Edit / Restore</button>
+            </td>
+        `;
+        abody.appendChild(tr);
+        row.remove();
+    }
+
+    function restoreRow(btn, data) {
+        addRow({
+            cat: data.cat,
+            req: data.req,
+            eng: data.eng,
+            desc: data.desc,
+            est: data.est,
+            status: "Testing"
+        });
+        btn.closest('tr').remove();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function toggleArchive() {
+        const area = document.getElementById('archive-area');
+        area.style.display = (area.style.display === 'block') ? 'none' : 'block';
+    }
+
+    async function syncToSupabase() {
+        document.getElementById('sync-info').innerText = "Syncing...";
+        // Logic to push current table state to Supabase would go here
+        setTimeout(() => {
+            document.getElementById('sync-info').innerText = "Last Cloud Sync: " + new Date().toLocaleTimeString();
+        }, 800);
+    }
+
+    window.onload = () => { addRow(); };
+</script>
+</body>
+</html>
