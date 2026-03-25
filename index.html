@@ -16,7 +16,7 @@
         textarea { height: 50px; resize: vertical; }
         .est-date-tag { font-weight: bold; color: var(--arjo-blue); font-size: 10px; }
         .btn-row { display: flex; gap: 10px; margin: 20px 0; }
-        button { cursor: pointer; border: none; border-radius: 4px; padding: 8px 12px; font-weight: bold; font-size: 11px; }
+        button { cursor: pointer; border: none; border-radius: 4px; padding: 8px 12px; font-weight: bold; font-size: 11px; transition: 0.2s; }
         .btn-add { background: var(--success); color: white; }
         .btn-sync { background: var(--arjo-blue); color: white; }
         .btn-archive-toggle { background: #6f42c1; color: white; }
@@ -37,8 +37,8 @@
             <tr>
                 <th style="width: 14%;">Category</th>
                 <th style="width: 12%;">Requestor</th>
-                <th style="width: 12%;">Assigned Eng.</th>
-                <th style="width: 28%;">Description & Justification</th>
+                <th style="width: 12%;">Engineer</th>
+                <th style="width: 28%;">Description</th>
                 <th style="width: 12%;">Est. Completion</th>
                 <th style="width: 12%;">Status</th>
                 <th style="width: 45px;"></th>
@@ -58,9 +58,9 @@
         <table id="archive-table">
             <thead>
                 <tr>
-                    <th style="width: 15%;">Category</th>
-                    <th style="width: 15%;">Requestor</th>
-                    <th style="width: 50%;">Closure Details</th>
+                    <th style="width: 20%;">Category</th>
+                    <th style="width: 20%;">Requestor</th>
+                    <th style="width: 40%;">Closure Details</th>
                     <th style="width: 20%;">Action</th>
                 </tr>
             </thead>
@@ -70,12 +70,11 @@
 </div>
 
 <script>
-    // FIXED KEYS
+    // --- SUPABASE CONFIG ---
     const SUPABASE_URL = 'https://htborrnoqiuvbvlszdos.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_IAtSD7zvmTvamDHA87uijA_7usXI9lX';
     const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // RESTORED YOUR FULL TEST LIST
     const TEST_CONFIG = {
         "Accelerated Aging": { days: 14, desc: "Heated chamber/Arrhenius Eq for shelf-life verification." },
         "Biocompatibility": { days: 10, desc: "ISO 10993 (Cytotoxicity, Irritation, Sensitization)." },
@@ -117,6 +116,7 @@
         const tbody = document.getElementById('test-body');
         const tr = document.createElement('tr');
         if (data.id) tr.setAttribute('data-id', data.id);
+        
         const cat = data.category || "Accelerated Aging";
         const sortedKeys = Object.keys(TEST_CONFIG).sort();
         let catOptions = sortedKeys.map(k => `<option value="${k}" ${k === cat ? 'selected' : ''}>${k}</option>`).join('');
@@ -134,7 +134,7 @@
                     <option value="Complete">🏁 Complete</option>
                 </select>
             </td>
-            <td><button style="color:red" onclick="this.closest('tr').remove()">✕</button></td>
+            <td><button style="color:red" onclick="deleteRow(this)">✕</button></td>
         `;
         tbody.appendChild(tr);
     }
@@ -149,8 +149,8 @@
     async function checkComplete(sel) {
         if(sel.value === 'Complete') {
             const row = sel.closest('tr');
-            if(confirm("Archive this? You can restore/edit it later from the archive section.")) {
-                const data = {
+            if(confirm("Archive this request?")) {
+                const archiveData = {
                     category: row.querySelector('.f-cat').value,
                     requestor: row.querySelector('.f-req').value,
                     engineer: row.querySelector('.f-eng').value,
@@ -159,7 +159,7 @@
                     closed_at: new Date().toLocaleString('en-GB')
                 };
                 const id = row.getAttribute('data-id');
-                const { error } = await _supabase.from('archived_requests').insert([data]);
+                const { error } = await _supabase.from('archived_requests').insert([archiveData]);
                 if (!error && id) {
                     await _supabase.from('test_requests').delete().eq('id', id);
                     row.remove();
@@ -167,6 +167,15 @@
                 }
             } else { sel.value = "Testing"; }
         }
+    }
+
+    async function deleteRow(btn) {
+        const row = btn.closest('tr');
+        const id = row.getAttribute('data-id');
+        if (id && confirm("Delete from cloud?")) {
+            await _supabase.from('test_requests').delete().eq('id', id);
+        }
+        row.remove();
     }
 
     async function syncToSupabase() {
@@ -192,24 +201,28 @@
     }
 
     async function fetchFromCloud() {
+        // Fetch Live Rows
         const { data: live } = await _supabase.from('test_requests').select('*').order('created_at', { ascending: true });
         if (live) {
             document.getElementById('test-body').innerHTML = "";
             live.forEach(item => addRow(item));
             if (live.length === 0) addRow();
         }
+        
+        // Fetch Archived Rows (THIS WAS THE MISSING PART)
         const { data: arch } = await _supabase.from('archived_requests').select('*').order('archived_at', { ascending: false });
         if (arch) {
-            document.getElementById('archive-body').innerHTML = arch.map(a => `
+            const abody = document.getElementById('archive-body');
+            abody.innerHTML = arch.map(a => `
                 <tr>
                     <td>${a.category}</td>
-                    <td>${a.requestor}</td>
-                    <td>Closed: ${a.closed_at}</td>
+                    <td>${a.requestor || '-'}</td>
+                    <td><span class="closed-stamp">Closed: ${a.closed_at}</span></td>
                     <td><button class="btn-restore" onclick='restoreItem(${JSON.stringify(a)})'>✏️ Edit</button></td>
                 </tr>
             `).join('');
         }
-        document.getElementById('sync-info').innerText = "✅ Last Sync: " + new Date().toLocaleTimeString();
+        document.getElementById('sync-info').innerText = "✅ Last Cloud Sync: " + new Date().toLocaleTimeString();
     }
 
     async function restoreItem(item) {
