@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ARJO V&V TEST REQUESTS - LIVE</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root { --arjo-blue: #005aa7; --success: #28a745; --danger: #d9534f; --bg: #f4f7f9; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); padding: 20px; color: #333; }
+        .container { max-width: 1250px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid var(--arjo-blue); margin-bottom: 15px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+        th { background: #f1f4f8; text-align: left; padding: 10px; font-size: 0.75em; border-bottom: 2px solid var(--arjo-blue); color: var(--arjo-blue); text-transform: uppercase; }
+        td { padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; font-size: 11px; }
+        input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 11px; }
+        textarea { height: 50px; resize: vertical; }
+        .est-date-tag { font-weight: bold; color: var(--arjo-blue); font-size: 10px; }
+        .sync-status { font-size: 12px; font-weight: bold; }
+        .btn-row { display: flex; gap: 10px; margin: 20px 0; }
+        button { cursor: pointer; border: none; border-radius: 4px; padding: 8px 12px; font-weight: bold; font-size: 11px; }
+        .btn-add { background: var(--success); color: white; }
+        .btn-sync { background: var(--arjo-blue); color: white; }
+        .btn-archive-toggle { background: #6f42c1; color: white; }
+        .archive-section { margin-top: 30px; padding: 15px; border: 1px dashed #ccc; background: #fafafa; border-radius: 8px; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h2 style="color:var(--arjo-blue); margin:0;">V&V TEST REQUEST LIST</h2>
+        <div id="sync-info" class="sync-status">Cloud: Initializing...</div>
+    </div>
+
+    <table id="request-table">
+        <thead>
+            <tr>
+                <th style="width: 14%;">Category</th>
+                <th style="width: 12%;">Requestor</th>
+                <th style="width: 12%;">Engineer</th>
+                <th style="width: 28%;">Description</th>
+                <th style="width: 12%;">Est. Completion</th>
+                <th style="width: 12%;">Status</th>
+                <th style="width: 45px;"></th>
+            </tr>
+        </thead>
+        <tbody id="test-body"></tbody>
+    </table>
+
+    <div class="btn-row">
+        <button class="btn-add" onclick="addNewRow()">+ New Request</button>
+        <button class="btn-sync" onclick="syncToSupabase()">💾 SYNC TO CLOUD</button>
+        <button class="btn-archive-toggle" onclick="toggleArchive()">📦 VIEW ARCHIVE</button>
+    </div>
+
+    <div id="archive-area" class="archive-section">
+        <h4 style="margin-top:0;">Archived / Completed History</h4>
+        <table id="archive-table">
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th>Requestor</th>
+                    <th>Engineer</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody id="archive-body"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // FIX 1: Use variables correctly in createClient
+    const SUPABASE_URL = 'https://htborrnoqiuvbvlszdos.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_IAtSD7zvmTvamDHA87uijA_7usXI9lX';
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const TEST_CONFIG = {
+        "Sound / Acoustic": { days: 0.2, desc: "Noise level verification (dB)." },
+        "Transportation & Packaging": { days: 14, desc: "ASTM D4169 shipping/vibration/drop tests." },
+        "EMC": { days: 7, desc: "Electromagnetic Compatibility testing." }
+        // ... (other categories)
+    };
+
+    // FIX 2: Automatic Fetch on Load
+    async function fetchFromSupabase() {
+        document.getElementById('sync-info').innerText = "Cloud: Fetching...";
+        const { data, error } = await _supabase.from('test_requests').select('*').order('created_at', { ascending: true });
+        
+        if (error) {
+            document.getElementById('sync-info').innerText = "❌ Cloud Error: " + error.message;
+            return;
+        }
+
+        const tbody = document.getElementById('test-body');
+        tbody.innerHTML = "";
+        data.forEach(item => renderRow(item));
+        if (data.length === 0) addNewRow();
+        document.getElementById('sync-info').innerText = "✅ Cloud Connected";
+    }
+
+    function renderRow(data = {}) {
+        const tbody = document.getElementById('test-body');
+        const tr = document.createElement('tr');
+        if (data.id) tr.setAttribute('data-id', data.id); // Remember the ID so we don't duplicate!
+
+        tr.innerHTML = `
+            <td><input class="f-cat" value="${data.category || 'Sound / Acoustic'}"></td>
+            <td><input class="f-req" value="${data.requestor || ''}"></td>
+            <td><input class="f-eng" value="${data.engineer || ''}"></td>
+            <td><textarea class="f-desc">${data.description || ''}</textarea></td>
+            <td><span class="est-date-tag">${data.est_completion || '4 Hours'}</span></td>
+            <td>
+                <select class="f-status">
+                    <option value="Pending" ${data.status==='Pending'?'selected':''}>Pending</option>
+                    <option value="Testing" ${data.status==='Testing'?'selected':''}>Testing</option>
+                    <option value="Complete" ${data.status==='Complete'?'selected':''}>Complete</option>
+                </select>
+            </td>
+            <td><button onclick="this.closest('tr').remove()">✕</button></td>
+        `;
+        tbody.appendChild(tr);
+    }
+
+    function addNewRow() { renderRow(); }
+
+    // FIX 3: Correct Upsert logic
+    async function syncToSupabase() {
+        const rows = document.querySelectorAll('#test-body tr');
+        const activeData = Array.from(rows).map(tr => {
+            const rowData = {
+                category: tr.querySelector('.f-cat').value,
+                requestor: tr.querySelector('.f-req').value,
+                engineer: tr.querySelector('.f-eng').value,
+                description: tr.querySelector('.f-desc').value,
+                est_completion: tr.querySelector('.est-date-tag').innerText,
+                status: tr.querySelector('.f-status').value
+            };
+            const id = tr.getAttribute('data-id');
+            if (id) rowData.id = id;
+            return rowData;
+        });
+
+        document.getElementById('sync-info').innerText = "Syncing...";
+        const { error } = await _supabase.from('test_requests').upsert(activeData);
+
+        if (error) {
+            alert("Sync Failed: " + error.message);
+        } else {
+            document.getElementById('sync-info').innerText = "✅ Saved " + new Date().toLocaleTimeString();
+            fetchFromSupabase(); // Reload to get new IDs
+        }
+    }
+
+    function toggleArchive() {
+        const area = document.getElementById('archive-area');
+        area.style.display = (area.style.display === 'block') ? 'none' : 'block';
+    }
+
+    window.onload = fetchFromSupabase;
+</script>
+</body>
+</html>
