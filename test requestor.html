@@ -38,7 +38,7 @@
 <div class="container">
     <div class="header">
         <h2 style="color:var(--arjo-blue); margin:0;">V&V TEST REQUEST LIST</h2>
-        <div id="sync-info" class="sync-status">Cloud Sync: Active</div>
+        <div id="sync-info" class="sync-status">Cloud Status: Not Connected</div>
     </div>
 
     <table id="request-table">
@@ -80,6 +80,16 @@
 </div>
 
 <script>
+    // ==========================================
+    // PLACE YOUR SUPABASE CREDENTIALS HERE
+    // ==========================================
+    const SUPABASE_URL = 'https://htborrnoqiuvbvlszdos.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_IAtSD7zvmTvamDHA87uijA_7usXI9lX';
+
+    // Initialize the Supabase client
+    const _supabase = supabase.createClient(https://htborrnoqiuvbvlszdos.supabase.co, sb_publishable_IAtSD7zvmTvamDHA87uijA_7usXI9lX);
+    // ==========================================
+
     const TEST_CONFIG = {
         "Accelerated Aging": { days: 14, desc: "Heated chamber/Arrhenius Eq for shelf-life verification." },
         "Biocompatibility": { days: 10, desc: "ISO 10993 (Cytotoxicity, Irritation, Sensitization)." },
@@ -164,8 +174,6 @@
     function archiveTest(row) {
         const abody = document.getElementById('archive-body');
         const tr = document.createElement('tr');
-        
-        // Capture data before removing
         const data = {
             cat: row.querySelector('.f-cat').value,
             req: row.querySelector('.f-req').value,
@@ -174,7 +182,6 @@
             est: row.querySelector('.est-date-tag').innerText,
             closed: new Date().toLocaleString('en-GB')
         };
-
         tr.innerHTML = `
             <td>${data.cat}</td>
             <td>${data.req || '-'}</td>
@@ -190,12 +197,7 @@
 
     function restoreRow(btn, data) {
         addRow({
-            cat: data.cat,
-            req: data.req,
-            eng: data.eng,
-            desc: data.desc,
-            est: data.est,
-            status: "Testing"
+            cat: data.cat, req: data.req, eng: data.eng, desc: data.desc, est: data.est, status: "Testing"
         });
         btn.closest('tr').remove();
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -207,11 +209,35 @@
     }
 
     async function syncToSupabase() {
+        if (SUPABASE_URL.includes('YOUR_PROJECT_REF')) {
+            alert("Please set your Supabase URL and Key in the script first!");
+            return;
+        }
+
+        const activeData = [];
+        document.querySelectorAll('#test-body tr').forEach(tr => {
+            activeData.push({
+                category: tr.querySelector('.f-cat').value,
+                requestor: tr.querySelector('.f-req').value,
+                engineer: tr.querySelector('.f-eng').value,
+                description: tr.querySelector('.f-desc').value,
+                status: tr.querySelector('.f-status').value
+            });
+        });
+
         document.getElementById('sync-info').innerText = "Syncing...";
-        // Logic to push current table state to Supabase would go here
-        setTimeout(() => {
+        
+        // Example push logic (assumes a table named 'test_requests')
+        const { error } = await _supabase
+            .from('test_requests')
+            .upsert(activeData);
+
+        if (error) {
+            console.error(error);
+            document.getElementById('sync-info').innerText = "Sync Error!";
+        } else {
             document.getElementById('sync-info').innerText = "Last Cloud Sync: " + new Date().toLocaleTimeString();
-        }, 800);
+        }
     }
 
     window.onload = () => { addRow(); };
